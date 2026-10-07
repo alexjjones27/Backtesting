@@ -1,0 +1,599 @@
+<title>CYPH–ZEC Strategy Backtest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one research-note column (max 1080px): verdict + rules, the equity chart, comparison table, robustness, caveats. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #fbfcfd;
+  --ink: #0f1720;
+  --ink-2: #48525f;
+  --muted: #677280;
+  --grid: #e4e8ec;
+  --axis: #c3cad3;
+  --rule: rgba(15, 23, 32, 0.10);
+  --accent: #2a78d6;
+  --accent-soft: #e5eefa;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
+  --div-neg: #e34948; --div-mid: #eef0f3; --div-pos: #2a78d6;
+  --on-strong: #ffffff;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --step--1: 0.8125rem; --step-0: 0.9375rem; --step-1: 1.125rem; --step-2: 1.5rem; --step-3: 2.25rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1015; --surface: #151a21; --ink: #eef2f6; --ink-2: #b4bdc8; --muted: #8b96a2;
+    --grid: #232a33; --axis: #3a444f; --rule: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5; --accent-soft: #172a40;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+    --div-neg: #d84a4a; --div-mid: #262c35; --div-pos: #3987e5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1015; --surface: #151a21; --ink: #eef2f6; --ink-2: #b4bdc8; --muted: #8b96a2;
+  --grid: #232a33; --axis: #3a444f; --rule: rgba(255, 255, 255, 0.10);
+  --accent: #3987e5; --accent-soft: #172a40;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+  --div-neg: #d84a4a; --div-mid: #262c35; --div-pos: #3987e5;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: var(--step-0); line-height: 1.55;
+  padding-inline: 16px; padding-block: 32px 48px;
+}
+.page { max-width: 1080px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: var(--step-3); letter-spacing: -0.01em; }
+h2 { font-size: var(--step-2); }
+h3 { font-size: var(--step-1); }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--font-mono); font-size: var(--step--1); color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.lede { font-size: var(--step-1); color: var(--ink-2); }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.stack { display: grid; gap: 12px; }
+section > .stack { gap: 16px; }
+
+/* Verdict */
+header.top { display: grid; gap: 14px; }
+.verdict { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .verdict { grid-template-columns: 1fr; } }
+.rules { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 22px; display: grid; gap: 14px; }
+.rules dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 18px; }
+.rules dt { font-family: var(--font-mono); font-size: var(--step--1); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; padding-top: 2px; }
+.rules dd { margin: 0; min-width: 0; }
+@media (max-width: 480px) { .rules dl { grid-template-columns: 1fr; gap: 2px 0; } .rules dd { margin-bottom: 8px; } }
+.tag { display: inline-block; font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 10px; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.tile .label { font-size: var(--step--1); color: var(--ink-2); }
+.tile .value { font-family: var(--font-display); font-weight: 600; font-size: 1.875rem; line-height: 1.1; }
+.tile .sub { font-size: var(--step--1); color: var(--muted); }
+
+/* Chart card */
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 20px 16px; display: grid; gap: 14px; min-width: 0; }
+.card-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: var(--step--1); padding: 6px 12px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.seg button + button { border-left: 1px solid var(--axis); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.legend button {
+  font: inherit; font-size: var(--step--1); display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 10px; border-radius: 999px; border: 1px solid var(--axis); background: transparent; color: var(--ink); cursor: pointer;
+}
+.legend button[aria-pressed="false"] { color: var(--muted); border-style: solid; opacity: 0.75; }
+.legend button[aria-pressed="false"] .key { background: var(--axis) !important; }
+.legend .val { font-family: var(--font-mono); color: var(--ink-2); }
+.key { display: inline-block; width: 16px; height: 3px; border-radius: 2px; flex: none; }
+button:focus-visible, svg:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chart-wrap { position: relative; min-width: 0; }
+.chart-wrap svg { display: block; width: 100%; overflow: visible; }
+.chart-wrap text { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-2); }
+.tooltip {
+  position: absolute; pointer-events: none; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  padding: 8px 10px; font-size: var(--step--1); min-width: 190px; display: grid; gap: 3px;
+}
+.tooltip .date { font-family: var(--font-mono); color: var(--muted); font-size: 0.75rem; margin-bottom: 2px; }
+.tooltip .row { display: grid; grid-template-columns: 16px auto 1fr; align-items: center; gap: 8px; }
+.tooltip strong { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.tooltip .name { color: var(--ink-2); white-space: nowrap; }
+.footnote { font-size: var(--step--1); color: var(--muted); max-width: 100ch; }
+details summary { cursor: pointer; font-size: var(--step--1); color: var(--ink-2); }
+.scroll { overflow-x: auto; min-width: 0; }
+
+/* Tables */
+table { border-collapse: collapse; width: 100%; font-size: var(--step--1); }
+th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th { font-weight: 500; color: var(--ink-2); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; vertical-align: bottom; white-space: normal; min-width: 72px; }
+th:first-child, td:first-child { text-align: left; }
+td.mono, th.mono { font-family: var(--font-mono); }
+tr.best td { background: var(--accent-soft); }
+tr.best td:first-child { font-weight: 600; }
+.strat { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Robustness */
+.two { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+table.heat td { text-align: center; font-family: var(--font-mono); padding: 10px 4px; border: 2px solid var(--surface); }
+table.heat th { text-align: center; min-width: 0; padding: 8px 4px; }
+table.heat th:first-child, table.heat td:first-child { text-align: left; font-family: var(--font-body); }
+table.heat td.chosen { box-shadow: inset 0 0 0 2px var(--ink); font-weight: 600; }
+.callout { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; display: grid; gap: 10px; }
+.callout .big { font-family: var(--font-display); font-weight: 600; font-size: var(--step-2); }
+
+/* Caveats */
+.caveats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; padding: 0; margin: 0; list-style: none; }
+@media (max-width: 720px) { .caveats { grid-template-columns: 1fr; } }
+.caveats li { display: grid; gap: 4px; padding-top: 12px; border-top: 1px solid var(--axis); }
+.caveats strong { font-weight: 600; }
+footer { font-size: var(--step--1); color: var(--muted); display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 16px; }
+code { font-family: var(--font-mono); font-size: 0.85em; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <header class="top">
+    <div class="eyebrow" id="eyebrow">CYPH × ZEC · hourly backtest</div>
+    <h1>Optimal strategy: hold both, tilt toward the cheap one</h1>
+    <p class="lede" id="lede">Of every version tested, an always-invested rotation between Cypherpunk Technologies (CYPH) and Zcash (ZEC) did best.</p>
+  </header>
+
+  <section class="verdict" aria-label="Recommended strategy">
+    <div class="rules">
+      <div><span class="tag">Recommended</span></div>
+      <h2>The 50/50 rotation</h2>
+      <dl>
+        <dt>Signal</dt>
+        <dd>How far CYPH's price relative to ZEC, ln(CYPH ÷ ZEC), sits from its average over the last <b>70 hourly bars</b> (about two trading weeks), in standard deviations (the z-score). Checked at each hourly close during US market hours.</dd>
+        <dt>Normally</dt>
+        <dd>50% CYPH, 50% ZEC.</dd>
+        <dt>CYPH cheap</dt>
+        <dd>z below <b>−1.5</b>: move to 100% CYPH.</dd>
+        <dt>ZEC cheap</dt>
+        <dd>z above <b>+1.5</b>: move to 100% ZEC.</dd>
+        <dt>Back to 50/50</dt>
+        <dd>When z crosses 0 (the gap has closed), or as a stop-loss if z stretches to <b>±3.0</b>. After a stop, don't tilt the same way again until z is back inside ±1.5.</dd>
+        <dt>Execution</dt>
+        <dd>Trade at the next hour's opening price. No shorting, no borrowing. Costs assumed: 0.2% per side.</dd>
+      </dl>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="card" aria-labelledby="chart-title">
+    <div class="card-head">
+      <div class="stack" style="gap:4px">
+        <h2 id="chart-title">What £1,000 became</h2>
+        <p class="muted" id="chart-sub" style="font-size:var(--step--1)">Value of £1,000 committed to each approach, daily close.</p>
+      </div>
+      <div class="seg" role="group" aria-label="Chart view">
+        <button type="button" id="view-value" aria-pressed="true">Value</button>
+        <button type="button" id="view-dd" aria-pressed="false">Drawdown</button>
+      </div>
+    </div>
+    <div class="legend" id="legend" role="group" aria-label="Show or hide strategies"></div>
+    <div class="chart-wrap" id="chart-wrap">
+      <svg id="chart" tabindex="0" role="img" aria-label="Equity curves"></svg>
+      <div class="tooltip" id="tooltip" hidden></div>
+    </div>
+    <p class="footnote" id="chart-note"></p>
+    <details>
+      <summary>Show the numbers (month-end values)</summary>
+      <div class="scroll" style="margin-top:10px"><table id="month-table"></table></div>
+    </details>
+  </section>
+
+  <section class="stack" aria-labelledby="compare-title">
+    <h2 id="compare-title">How every approach compares</h2>
+    <p class="muted" id="compare-note"></p>
+    <div class="scroll"><table id="compare"></table></div>
+  </section>
+
+  <section class="stack" aria-labelledby="why-title">
+    <h2 id="why-title">Why 1.5 and 70 hours</h2>
+    <div class="two">
+      <div class="stack">
+        <p id="heat-intro"></p>
+        <div class="scroll"><table class="heat" id="heat"></table></div>
+        <p class="footnote" id="heat-note"></p>
+      </div>
+      <div class="callout" id="walk"></div>
+    </div>
+  </section>
+
+  <section class="stack" aria-labelledby="risk-title">
+    <h2 id="risk-title">Before you trade it</h2>
+    <ul class="caveats" id="caveats"></ul>
+  </section>
+
+  <footer>
+    <div>All values in GBP, with USD prices converted at the live GBP/USD rate. Data: Yahoo Finance (CYPH, GBP/USD), Coinbase (ZEC). Hourly CYPH history starts 13 Nov 2025, the day after Leap Therapeutics became Cypherpunk Technologies.</div>
+    <div>Built with <code>make_dashboard.py</code> in the Backtesting repository. A backtest, not investment advice.</div>
+  </footer>
+</div>
+
+<script>
+const DATA = {"period":{"start":"1 Dec 2025","end":"6 Oct 2026","days":213},"dates":["2025-12-01","2025-12-02","2025-12-03","2025-12-04","2025-12-05","2025-12-08","2025-12-09","2025-12-10","2025-12-11","2025-12-12","2025-12-15","2025-12-16","2025-12-17","2025-12-18","2025-12-19","2025-12-22","2025-12-23","2025-12-24","2025-12-26","2025-12-29","2025-12-30","2025-12-31","2026-01-02","2026-01-05","2026-01-06","2026-01-07","2026-01-08","2026-01-09","2026-01-12","2026-01-13","2026-01-14","2026-01-15","2026-01-16","2026-01-20","2026-01-21","2026-01-22","2026-01-23","2026-01-26","2026-01-27","2026-01-28","2026-01-29","2026-01-30","2026-02-02","2026-02-03","2026-02-04","2026-02-05","2026-02-06","2026-02-09","2026-02-10","2026-02-11","2026-02-12","2026-02-13","2026-02-17","2026-02-18","2026-02-19","2026-02-20","2026-02-23","2026-02-24","2026-02-25","2026-02-26","2026-02-27","2026-03-02","2026-03-03","2026-03-04","2026-03-05","2026-03-06","2026-03-09","2026-03-10","2026-03-11","2026-03-12","2026-03-13","2026-03-16","2026-03-17","2026-03-18","2026-03-19","2026-03-20","2026-03-23","2026-03-24","2026-03-25","2026-03-26","2026-03-27","2026-03-30","2026-03-31","2026-04-01","2026-04-02","2026-04-06","2026-04-07","2026-04-08","2026-04-09","2026-04-10","2026-04-13","2026-04-14","2026-04-15","2026-04-16","2026-04-17","2026-04-20","2026-04-21","2026-04-22","2026-04-23","2026-04-24","2026-04-27","2026-04-28","2026-04-29","2026-04-30","2026-05-01","2026-05-04","2026-05-05","2026-05-06","2026-05-07","2026-05-08","2026-05-11","2026-05-12","2026-05-13","2026-05-14","2026-05-15","2026-05-18","2026-05-19","2026-05-20","2026-05-21","2026-05-22","2026-05-26","2026-05-27","2026-05-28","2026-05-29","2026-06-01","2026-06-02","2026-06-03","2026-06-04","2026-06-05","2026-06-08","2026-06-09","2026-06-10","2026-06-11","2026-06-12","2026-06-15","2026-06-16","2026-06-17","2026-06-18","2026-06-22","2026-06-23","2026-06-24","2026-06-25","2026-06-26","2026-06-29","2026-06-30","2026-07-01","2026-07-02","2026-07-06","2026-07-07","2026-07-08","2026-07-09","2026-07-10","2026-07-13","2026-07-14","2026-07-15","2026-07-16","2026-07-17","2026-07-20","2026-07-21","2026-07-22","2026-07-23","2026-07-24","2026-07-27","2026-07-28","2026-07-29","2026-07-30","2026-07-31","2026-08-03","2026-08-04","2026-08-05","2026-08-06","2026-08-07","2026-08-10","2026-08-11","2026-08-12","2026-08-13","2026-08-14","2026-08-17","2026-08-18","2026-08-19","2026-08-20","2026-08-21","2026-08-24","2026-08-25","2026-08-26","2026-08-27","2026-08-28","2026-08-31","2026-09-01","2026-09-02","2026-09-03","2026-09-04","2026-09-08","2026-09-09","2026-09-10","2026-09-11","2026-09-14","2026-09-15","2026-09-16","2026-09-17","2026-09-18","2026-09-21","2026-09-22","2026-09-23","2026-09-24","2026-09-25","2026-09-28","2026-09-29","2026-09-30","2026-10-01","2026-10-02","2026-10-05","2026-10-06"],"series":{"rotation":[967.01,911.17,1009.08,1015.99,950.98,1010.53,1358.69,1251.86,1401.93,1329.83,1156.8,1168.73,946.92,899.04,1232.16,1064.8,1135.49,1107.12,1154.38,1126.0,1259.09,1116.75,1088.51,1102.08,1163.84,1069.51,1052.7,1015.25,1001.71,951.22,1078.77,996.74,1014.62,881.31,894.6,891.59,833.21,818.69,878.91,827.3,727.46,751.72,797.84,767.46,743.03,611.37,687.05,688.1,659.32,710.93,671.96,791.3,840.07,741.88,783.86,762.16,737.65,749.34,798.92,742.42,680.39,683.81,678.92,764.4,709.5,612.62,645.55,673.74,689.28,694.86,683.79,840.67,921.04,834.26,802.48,788.88,779.43,765.76,793.4,745.65,735.66,728.29,920.48,906.11,877.22,923.93,861.45,988.54,1154.65,1228.04,1160.61,1108.74,1094.72,1077.4,1038.74,1017.75,972.17,1009.51,1052.54,1147.99,1128.81,1081.78,1031.1,1108.05,1231.05,1227.47,1325.89,1518.79,1487.17,1578.05,1512.21,1481.25,1429.17,1556.27,1452.26,1488.42,1561.23,1845.56,1909.72,1754.88,1767.47,1686.19,1717.05,1695.44,1683.86,1844.6,1833.57,1560.0,883.29,1209.56,1156.5,1112.79,1147.51,1105.58,1392.66,1317.89,1309.69,1248.45,1233.04,1135.99,1078.09,1051.35,1106.49,1122.66,1095.57,1167.66,1238.92,1265.33,1284.84,1214.29,1260.03,1287.42,1265.59,1357.18,1362.38,1299.17,1279.73,1289.86,1351.49,1261.16,1266.76,1178.28,1194.01,1166.99,1140.99,1201.17,1144.08,1225.8,1303.61,1329.39,1266.04,1316.56,1279.4,1224.13,1239.05,1234.97,1228.92,1360.99,1384.56,1666.55,1787.35,2047.65,2435.26,2363.7,2360.37,2460.26,2405.85,2588.12,2518.72,2471.46,3128.52,3313.74,3824.38,3915.81,3534.44,3648.35,4158.48,3779.34,4164.87,5342.03,5667.0,5676.61,5871.84,5902.38,6056.29,5995.62,5725.91,5543.09,5678.03,5157.74,5192.43,5457.19,5415.13],"hold_zec":[963.46,898.8,996.88,1045.62,1028.2,1174.58,1226.13,1157.95,1328.02,1304.5,1138.21,1166.59,1099.93,1102.86,1292.19,1227.93,1194.8,1264.95,1275.99,1554.47,1516.62,1454.52,1387.11,1411.29,1417.48,1361.92,1233.97,1190.36,1173.73,1114.81,1264.67,1169.01,1187.61,1014.66,1056.33,1049.19,1052.5,1045.2,1136.68,1075.38,999.16,963.48,839.97,824.17,758.23,623.93,701.1,702.06,672.75,722.28,669.77,795.75,827.9,783.85,766.19,747.93,688.45,714.23,743.3,690.54,632.88,635.67,630.91,710.34,665.93,614.71,622.78,646.99,620.06,603.78,610.37,766.48,784.85,710.21,684.89,672.22,665.28,653.11,676.42,635.23,620.97,647.81,730.6,737.55,694.68,732.77,784.59,935.93,1058.9,1097.46,1049.9,999.95,1028.26,991.7,951.01,916.72,888.62,921.81,961.89,1028.51,1015.29,961.78,924.7,1004.45,1101.46,1177.66,1283.48,1581.34,1596.51,1626.14,1587.09,1578.46,1502.52,1557.4,1486.07,1586.68,1633.63,1929.42,1900.29,1730.74,1663.72,1580.57,1580.57,1519.52,1602.75,1705.66,1711.01,1503.16,971.44,1306.5,1275.23,1204.92,1245.86,1188.24,1495.81,1420.1,1378.96,1293.44,1288.83,1197.17,1162.05,1139.31,1192.61,1170.34,1147.05,1178.78,1240.78,1289.47,1419.53,1336.42,1387.74,1444.87,1441.37,1541.05,1614.62,1559.69,1558.51,1563.64,1523.04,1458.23,1432.65,1419.73,1402.04,1348.19,1315.76,1355.23,1305.68,1388.44,1449.32,1477.9,1407.45,1463.35,1421.9,1360.36,1402.63,1385.05,1403.35,1466.85,1453.58,1568.44,1619.45,1924.4,2288.24,2221.15,2217.77,2311.54,2260.23,2431.41,2358.27,2308.28,2741.32,2953.65,3243.18,3533.7,3183.95,3326.83,3391.94,3206.91,3676.97,4254.21,4185.82,4192.41,4336.01,4356.56,4469.73,4425.53,4160.43,4000.81,4065.52,3813.14,3669.78,3848.19,3860.56],"hold_5050":[967.01,911.17,1009.08,1015.99,950.98,1045.51,1240.52,1143.73,1280.92,1215.17,1039.47,1058.87,935.21,917.25,1147.04,1047.59,1059.99,1083.57,1108.26,1236.01,1270.79,1182.11,1136.79,1154.98,1182.83,1116.53,1073.62,1020.83,1030.13,971.63,1079.32,1019.66,1005.76,871.15,888.41,885.04,861.07,848.24,913.58,856.65,780.69,771.35,721.58,696.61,667.65,562.28,628.73,630.03,586.12,614.61,579.08,682.66,701.31,645.43,650.27,634.18,601.47,613.17,645.46,621.85,565.41,575.74,558.91,641.4,576.77,512.69,528.12,549.43,540.02,540.59,532.17,657.84,707.92,637.63,625.67,610.88,619.79,616.2,633.82,592.48,566.46,566.2,674.83,667.02,642.76,666.78,677.56,784.43,911.13,965.11,914.72,874.42,869.57,852.29,820.94,802.45,767.88,797.41,830.82,911.86,874.64,836.58,798.1,860.9,937.21,978.37,1058.58,1232.57,1215.22,1277.91,1229.85,1207.96,1161.73,1248.74,1170.12,1197.92,1240.5,1465.65,1458.79,1337.42,1290.45,1214.13,1229.6,1204.96,1218.81,1323.02,1317.87,1137.37,690.72,938.92,905.37,861.17,890.49,851.94,1071.67,1016.93,991.68,935.19,927.74,856.48,820.4,803.88,842.83,832.48,813.9,844.21,886.18,913.15,989.78,933.89,969.52,1003.81,996.39,1066.74,1107.67,1065.33,1060.22,1064.48,1055.47,996.37,978.95,954.38,948.11,915.55,895.28,929.22,890.11,949.09,998.86,1028.99,971.5,1008.08,982.93,951.55,963.43,950.22,959.13,1019.58,1042.23,1203.35,1272.67,1512.44,1793.2,1749.19,1746.92,1885.29,1797.39,1924.87,1844.82,1808.6,2248.6,2412.39,2640.6,2711.12,2444.19,2543.25,2703.09,2463.64,2784.16,3315.97,3488.61,3418.13,3627.29,3599.93,3825.23,3819.47,3374.24,3260.56,3334.19,3051.04,3019.81,3168.95,3196.84],"pairs":[1000.0,1000.0,1000.0,1000.0,1000.0,941.63,1201.93,1201.93,1201.93,1201.93,1232.65,1218.41,1081.81,1037.27,1165.42,1073.55,1163.26,1078.2,1109.37,845.3,993.59,922.32,954.9,945.1,993.45,958.52,992.56,1024.94,972.83,988.44,1037.08,984.25,1053.9,1053.9,1053.9,1053.9,988.57,988.57,988.57,1001.93,946.65,1013.48,1210.62,1210.62,1215.34,1164.99,1172.35,1172.24,1237.06,1295.53,1295.53,1295.53,1368.06,1292.5,1370.78,1364.37,1387.27,1387.27,1410.31,1323.43,1345.39,1312.3,1358.2,1309.45,1386.73,1347.02,1385.91,1390.7,1466.33,1466.33,1466.33,1466.33,1485.64,1491.2,1459.09,1467.03,1420.08,1395.05,1405.82,1416.62,1470.37,1456.32,1581.38,1581.38,1581.38,1616.04,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1459.33,1438.08,1497.0,1497.0,1497.0,1497.0,1537.83,1450.99,1450.99,1450.99,1450.99,1450.99,1450.99,1450.99,1450.99,1450.99,1450.99,1479.94,1501.13,1511.73,1601.88,1601.88,1675.82,1703.58,1703.58,1703.58,1703.58,1703.58,1703.58,1692.96,1653.43,1653.43,1653.43,1667.24,1664.59,1673.45,1680.09,1674.26,1700.57,1710.41,1710.41,1710.41,1706.16,1700.47,1705.43,1752.87,1752.87,1794.37,1827.24,1824.71,1712.72,1717.75,1715.76,1695.6,1680.74,1679.13,1629.64,1620.49,1606.23,1609.58,1687.56,1687.56,1726.08,1663.43,1687.58,1702.28,1702.65,1726.51,1726.51,1726.51,1734.19,1694.9,1728.52,1739.12,1726.31,1684.02,1711.24,1733.97,1715.04,1772.19,1711.76,1711.76,1711.76,1639.62,1633.09,1618.89,1615.93,1480.46,1577.04,1583.56,1639.68,1639.68,1639.68,1616.44,1730.05,1771.97,1774.94,1762.94,1861.64,1881.73,1838.35,2003.72,1975.25,2029.9,1962.82,1994.1,1896.79,1874.26,2069.87,2069.87,2069.87,2069.87,2085.85,2088.08,2053.19],"long_only":[1000.0,1000.0,1000.0,1000.0,1000.0,912.15,1264.65,1264.65,1264.65,1264.65,1263.4,1274.34,1080.38,1038.62,1329.14,1184.0,1246.08,1221.36,1262.57,1237.85,1353.51,1229.55,1204.68,1217.37,1270.81,1188.17,1111.05,1075.25,1062.6,1014.37,1135.87,1057.47,1069.2,1069.2,1069.2,1069.2,1031.04,1031.04,1031.04,1035.36,907.56,940.01,1033.12,1033.12,1043.37,859.23,964.61,963.98,924.47,957.13,957.13,957.13,1047.33,917.62,974.63,944.95,913.11,913.11,921.54,849.12,768.53,774.54,769.0,880.07,809.36,776.23,827.55,873.41,912.75,912.75,912.75,912.75,918.88,823.53,787.31,772.98,761.84,747.08,777.75,725.36,713.3,713.4,966.18,966.18,966.18,1010.12,919.23,919.23,919.23,919.23,919.23,919.23,919.23,919.23,919.23,919.23,919.23,919.23,919.23,909.78,902.4,902.4,902.4,902.4,926.72,921.69,921.69,921.69,921.69,921.69,921.69,921.69,921.69,921.69,921.69,963.87,1014.64,1216.47,1299.46,1299.46,1233.02,1211.2,1211.2,1211.2,1211.2,1211.2,1211.2,1176.12,758.68,758.68,758.68,729.7,760.84,723.68,977.69,911.68,903.1,899.04,899.04,899.04,899.32,874.79,925.79,904.42,904.42,892.39,964.5,969.6,898.03,844.76,879.88,900.7,883.15,953.94,960.52,911.05,895.88,903.22,977.27,977.27,988.63,917.56,929.76,907.98,887.97,946.37,946.37,946.37,977.82,998.73,947.73,988.95,959.28,914.91,953.7,964.57,960.15,1064.86,1049.59,1049.59,1049.59,1064.02,1258.56,1223.45,1219.53,1269.69,1240.36,1332.6,1291.77,1291.77,1291.77,1358.3,1472.83,1538.9,1442.1,1471.37,1548.77,1577.15,1678.05,2007.05,2004.76,2004.86,2037.66,2036.74,2062.49,2053.65,2004.61,2004.61,2004.61,2004.61,1946.63,1993.27,1988.23],"hold_cyph":[970.57,923.55,1021.29,986.36,873.76,916.43,1254.92,1129.51,1233.81,1125.83,940.73,951.14,770.49,731.63,1001.89,867.24,925.18,902.19,940.53,917.54,1024.95,909.71,886.47,898.67,948.19,871.14,913.27,851.29,886.52,828.45,893.96,870.3,823.92,727.63,720.49,720.89,669.63,651.28,690.48,637.92,562.23,579.22,603.19,569.05,577.07,500.63,556.35,558.01,499.5,506.95,488.4,569.57,574.72,507.0,534.34,520.43,514.48,512.12,547.62,553.16,497.94,515.82,486.91,572.46,487.6,410.66,433.45,451.87,459.97,477.4,453.97,549.2,630.99,565.06,566.44,549.54,574.29,579.29,591.22,549.73,511.95,484.59,619.07,596.5,590.83,600.78,570.53,632.93,763.36,832.76,779.55,748.88,710.88,712.89,690.88,688.17,647.14,673.01,699.76,795.21,734.0,711.39,671.5,717.35,772.95,779.07,833.68,883.81,833.94,929.68,872.6,837.46,820.95,940.07,854.18,809.17,847.36,1001.88,1017.3,944.11,917.19,847.7,878.62,890.41,834.87,940.38,924.73,771.58,410.0,571.34,535.5,517.43,535.12,515.64,647.53,613.76,604.41,576.93,566.65,515.79,478.75,468.45,493.06,494.62,480.75,509.64,531.58,536.82,560.02,531.36,551.3,562.76,551.4,592.43,600.72,570.97,561.93,565.33,587.9,534.51,525.24,489.03,494.18,482.9,474.8,503.22,474.54,509.74,548.4,580.09,535.55,552.82,543.95,542.75,524.23,515.39,514.9,572.3,630.87,838.27,925.88,1100.48,1298.17,1277.22,1276.08,1459.04,1334.55,1418.34,1331.38,1308.92,1755.87,1871.13,2038.02,1888.53,1704.44,1759.66,2014.24,1720.38,1891.36,2377.72,2791.39,2643.84,2918.58,2843.3,3180.72,3213.42,2588.05,2520.32,2602.86,2288.94,2369.85,2489.7,2533.11]},"stats":{"rotation":{"final":5415.13,"return_pct":441.5,"max_dd_pct":-57.9,"sharpe":2.11},"hold_zec":{"final":3860.56,"return_pct":286.1,"max_dd_pct":-61.7,"sharpe":1.91},"hold_5050":{"final":3196.84,"return_pct":219.7,"max_dd_pct":-60.3,"sharpe":1.72},"pairs":{"final":2053.19,"return_pct":105.3,"max_dd_pct":-33.1,"sharpe":1.56},"long_only":{"final":1988.23,"return_pct":98.8,"max_dd_pct":-48.1,"sharpe":1.26},"hold_cyph":{"final":2533.11,"return_pct":153.3,"max_dd_pct":-67.8,"sharpe":1.5}},"pvalues":{"rotation":{"hours":0.08,"days":0.14},"pairs":{"hours":0.1,"days":0.15},"long_only":{"hours":0.1,"days":0.16}},"rotation":{"tilts":33,"to_cyph":20,"to_zec":13},"grid":{"window_start":"15 Dec 2025","split":"12 May 2026","lookbacks":[35,70,140],"thresholds":[1.0,1.25,1.5,1.75,2.0,2.25,2.5,3.0],"values":[[-13.8,0.3,35.6,28.0,30.0,40.4,16.3,-7.7],[59.4,50.3,47.3,55.5,49.4,6.9,-4.9,-12.9],[20.6,51.9,59.9,50.5,41.6,32.4,13.3,-8.0]],"chosen":{"lookback":70,"entry":1.5},"chosen_h1":13.6,"chosen_h2":29.6,"n_settings":96,"best_h1":{"lookback":140,"entry":1.25,"stop":null,"h1":43.7,"h2":-3.6},"top5_h2_mean":0.6,"median_h2":9.4,"share_positive_both":49}};
+
+const SERIES = [
+  { key: "rotation", name: "Rotation (recommended)", short: "Rotation", color: "--s1", on: true, width: 2.5 },
+  { key: "hold_zec", name: "Hold ZEC", short: "ZEC", color: "--s2", on: true },
+  { key: "hold_5050", name: "Hold 50/50", short: "50/50", color: "--s3", on: true },
+  { key: "pairs", name: "Pairs trade (long/short)", short: "Pairs", color: "--s4", on: true },
+  { key: "long_only", name: "Long-only (buy the cheap one)", short: "Long-only", color: "--s5", on: false },
+  { key: "hold_cyph", name: "Hold CYPH", short: "CYPH", color: "--s6", on: false },
+];
+const state = { view: "value", idx: null, on: Object.fromEntries(SERIES.map(s => [s.key, s.on])) };
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const gbp = v => (v < 0 ? "−£" : "£") + Math.abs(Math.round(v)).toLocaleString("en-GB");
+const pct = (v, d = 0) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d) + "%";
+const el = (tag, attrs = {}, text) => {
+  const ns = ["svg", "path", "line", "text", "circle", "rect", "g"].includes(tag) ? "http://www.w3.org/2000/svg" : null;
+  const n = ns ? document.createElementNS(ns, tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+const dates = DATA.dates.map(d => new Date(d + "T12:00:00Z"));
+const fmtDate = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const drawdown = arr => { let peak = -Infinity; return arr.map(v => { peak = Math.max(peak, v); return (v / peak - 1) * 100; }); };
+const st = DATA.stats, pv = DATA.pvalues;
+
+/* ---------- copy that depends on the numbers ---------- */
+$("eyebrow").textContent = `CYPH × ZEC · 1-hour bars · ${DATA.period.start} – ${DATA.period.end} · after costs`;
+$("lede").textContent =
+  `Of every version tested, an always-invested rotation between Cypherpunk Technologies (CYPH) and Zcash (ZEC) did best: ` +
+  `£1,000 grew to ${gbp(st.rotation.final)}, against ${gbp(st.hold_zec.final)} for simply holding ZEC. ` +
+  `The signal behind it is not statistically proven yet, so treat it as a tilt on a Zcash position, not a hedge.`;
+
+const tiles = [
+  ["£1,000 became", gbp(st.rotation.final), `${pct(st.rotation.return_pct)} in ${DATA.period.days} trading days`],
+  ["Ahead of holding ZEC", "+" + gbp(st.rotation.final - st.hold_zec.final), `and ${gbp(st.rotation.final - st.hold_5050.final)} ahead of holding 50/50`],
+  ["Worst drawdown", pct(st.rotation.max_dd_pct), `holding ZEC: ${pct(st.hold_zec.max_dd_pct)}`],
+  ["Shuffled histories that matched it", `${Math.round(pv.rotation.hours * 100)}%`, `${Math.round(pv.rotation.days * 100)}% with day shuffles; under 5% would count as proven`],
+];
+for (const [label, value, sub] of tiles) {
+  const t = el("div", { class: "tile" });
+  t.append(el("div", { class: "label" }, label), el("div", { class: "value num" }, value), el("div", { class: "sub" }, sub));
+  $("tiles").append(t);
+}
+$("chart-note").textContent =
+  `Every line starts with £1,000 on ${DATA.period.start}, the first day the 70-hour signal existed. ` +
+  `Rotation and the holds are always fully invested. Pairs trade: £1,000 long the cheap asset and £1,000 short the rich one per trade, ` +
+  `paying 10% a year to borrow the short side. Long-only: £1,000 in the cheap asset during signals, cash otherwise. ` +
+  `The three signal strategies use identical settings (entry 1.5, stop 3.0, 70-hour lookback). All after 0.2% per side costs.`;
+
+/* ---------- legend ---------- */
+function buildLegend() {
+  $("legend").replaceChildren();
+  for (const s of SERIES) {
+    const b = el("button", { type: "button", "aria-pressed": String(state.on[s.key]) });
+    const key = el("span", { class: "key" });
+    key.style.background = `var(${s.color})`;
+    b.append(key, el("span", {}, s.name), el("span", { class: "val" }, gbp(st[s.key].final)));
+    b.addEventListener("click", () => {
+      state.on[s.key] = !state.on[s.key];
+      b.setAttribute("aria-pressed", String(state.on[s.key]));
+      render();
+    });
+    $("legend").append(b);
+  }
+}
+
+/* ---------- chart ---------- */
+function niceStep(range, target) {
+  const raw = range / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+}
+let geom = null;
+
+function render() {
+  const svg = $("chart"), wrap = $("chart-wrap");
+  const W = Math.max(280, wrap.clientWidth);
+  const narrow = W < 560;
+  const H = narrow ? 300 : 380;
+  const m = { l: narrow ? 52 : 62, r: narrow ? 58 : 86, t: 12, b: 28 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b, n = dates.length;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("height", H);
+  svg.replaceChildren();
+
+  const isValue = state.view === "value";
+  const vals = Object.fromEntries(SERIES.map(s => [s.key, isValue ? DATA.series[s.key] : drawdown(DATA.series[s.key])]));
+  const visible = SERIES.filter(s => state.on[s.key]);
+  const pool = (visible.length ? visible : SERIES).flatMap(s => vals[s.key]);
+  let lo = Math.min(...pool), hi = Math.max(...pool);
+  if (isValue) { lo = Math.min(lo, 1000); hi = Math.max(hi, 1000); } else { hi = 0; }
+  const step = niceStep(hi - lo || 1, narrow ? 4 : 6);
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const x = i => m.l + (n === 1 ? 0 : (i / (n - 1)) * pw);
+  const y = v => m.t + ph - ((v - lo) / (hi - lo)) * ph;
+
+  // grid + y ticks
+  const g = el("g");
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    g.append(el("line", { x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v), stroke: css("--grid"), "stroke-width": 1 }));
+    const t = el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, isValue ? gbp(v) : pct(v));
+    g.append(t);
+  }
+  // reference line: start value or 0% drawdown
+  const ref = isValue ? 1000 : 0;
+  g.append(el("line", { x1: m.l, x2: m.l + pw, y1: y(ref), y2: y(ref), stroke: css("--ink-2"), "stroke-width": 1 }));
+  // x ticks at month starts
+  let lastMonth = -1, every = narrow ? 2 : 1, count = 0;
+  dates.forEach((d, i) => {
+    const mo = d.getUTCMonth();
+    if (mo !== lastMonth) {
+      if (count % every === 0) {
+        const label = d.toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }) + (mo === 0 ? " " + d.getUTCFullYear() : "");
+        g.append(el("line", { x1: x(i), x2: x(i), y1: m.t + ph, y2: m.t + ph + 4, stroke: css("--axis") }));
+        g.append(el("text", { x: x(i), y: m.t + ph + 18, "text-anchor": "middle" }, label));
+      }
+      lastMonth = mo; count++;
+    }
+  });
+  g.append(el("line", { x1: m.l, x2: m.l + pw, y1: m.t + ph, y2: m.t + ph, stroke: css("--axis") }));
+  svg.append(g);
+
+  // lines (recommended drawn last so it sits on top)
+  const order = [...visible].reverse();
+  for (const s of order) {
+    const d = vals[s.key].map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join("");
+    svg.append(el("path", { d, fill: "none", stroke: css(s.color), "stroke-width": s.width || 1.75,
+      "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  }
+
+  // end labels: value only, skipped when they would collide (legend + tooltip still carry them)
+  const placed = [];
+  for (const s of visible) {
+    const v = vals[s.key][n - 1], yy = y(v);
+    if (placed.some(p => Math.abs(p - yy) < 15)) continue;
+    placed.push(yy);
+    svg.append(el("circle", { cx: x(n - 1), cy: yy, r: 4, fill: css(s.color), stroke: css("--surface"), "stroke-width": 2 }));
+    svg.append(el("text", { x: x(n - 1) + 9, y: yy + 4, style: "fill: var(--ink)" }, isValue ? gbp(v) : pct(v, 0)));
+  }
+
+  // hover layer
+  const hover = el("g", { "pointer-events": "none" });
+  svg.append(hover);
+  const hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" });
+  svg.append(hit);
+  geom = { x, y, n, m, pw, ph, vals, visible, hover, W, isValue };
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (W / r.width);
+    showAt(Math.round(((px - m.l) / pw) * (n - 1)));
+  });
+  hit.addEventListener("pointerleave", () => { if (document.activeElement !== svg) hide(); });
+  svg.setAttribute("aria-label",
+    `${isValue ? "Value of £1,000" : "Drawdown from peak"} from ${DATA.period.start} to ${DATA.period.end}. ` +
+    visible.map(s => `${s.name}: ${isValue ? gbp(DATA.series[s.key][n - 1]) : pct(Math.min(...vals[s.key]), 0) + " worst"}`).join("; ") +
+    ". Use the arrow keys to step through days.");
+  if (state.idx !== null) showAt(state.idx);
+}
+
+function showAt(i) {
+  const { x, y, n, m, ph, vals, visible, hover, W, isValue } = geom;
+  i = Math.max(0, Math.min(n - 1, i));
+  state.idx = i;
+  hover.replaceChildren();
+  hover.append(el("line", { x1: x(i), x2: x(i), y1: m.t, y2: m.t + ph, stroke: css("--ink-2"), "stroke-width": 1 }));
+  for (const s of visible) {
+    hover.append(el("circle", { cx: x(i), cy: y(vals[s.key][i]), r: 4, fill: css(s.color), stroke: css("--surface"), "stroke-width": 2 }));
+  }
+  const tip = $("tooltip");
+  tip.replaceChildren(el("div", { class: "date" }, fmtDate(dates[i])));
+  [...visible].sort((a, b) => vals[b.key][i] - vals[a.key][i]).forEach(s => {
+    const row = el("div", { class: "row" });
+    const key = el("span", { class: "key" });
+    key.style.background = css(s.color);
+    const v = vals[s.key][i];
+    row.append(key, el("strong", {}, isValue ? gbp(v) : pct(v, 1)), el("span", { class: "name" }, s.short));
+    tip.append(row);
+  });
+  tip.hidden = visible.length === 0;
+  const wrap = $("chart-wrap"), scale = wrap.clientWidth / W;
+  const tw = tip.offsetWidth, px = x(i) * scale;
+  tip.style.left = (px + 14 + tw > wrap.clientWidth ? Math.max(0, px - 14 - tw) : px + 14) + "px";
+  tip.style.top = (m.t + 8) + "px";
+}
+function hide() { state.idx = null; if (geom) geom.hover.replaceChildren(); $("tooltip").hidden = true; }
+
+$("chart").addEventListener("keydown", e => {
+  const step = { ArrowLeft: -1, ArrowRight: 1, PageUp: -20, PageDown: 20 }[e.key];
+  if (step) { e.preventDefault(); showAt((state.idx ?? geom.n - 1) + step); }
+  if (e.key === "Home") { e.preventDefault(); showAt(0); }
+  if (e.key === "End") { e.preventDefault(); showAt(geom.n - 1); }
+  if (e.key === "Escape") hide();
+});
+$("chart").addEventListener("focus", () => showAt(state.idx ?? geom.n - 1));
+$("chart").addEventListener("blur", hide);
+
+function setView(v) {
+  state.view = v;
+  $("view-value").setAttribute("aria-pressed", String(v === "value"));
+  $("view-dd").setAttribute("aria-pressed", String(v === "dd"));
+  $("chart-title").textContent = v === "value" ? "What £1,000 became" : "How far each fell from its peak";
+  $("chart-sub").textContent = v === "value"
+    ? "Value of £1,000 committed to each approach, daily close."
+    : "Drawdown: percentage below the highest value reached so far, daily close.";
+  render();
+}
+$("view-value").addEventListener("click", () => setView("value"));
+$("view-dd").addEventListener("click", () => setView("dd"));
+
+/* ---------- month-end table ---------- */
+(function monthTable() {
+  const t = $("month-table");
+  const head = el("tr");
+  head.append(el("th", {}, "Month end"));
+  SERIES.forEach(s => head.append(el("th", {}, s.short)));
+  const thead = el("thead"); thead.append(head);
+  const tbody = el("tbody");
+  dates.forEach((d, i) => {
+    const next = dates[i + 1];
+    if (next && next.getUTCMonth() === d.getUTCMonth()) return;
+    const tr = el("tr");
+    tr.append(el("td", {}, fmtDate(d)));
+    SERIES.forEach(s => tr.append(el("td", { class: "mono" }, gbp(DATA.series[s.key][i]))));
+    tbody.append(tr);
+  });
+  t.append(thead, tbody);
+})();
+
+/* ---------- comparison table ---------- */
+(function compare() {
+  $("compare-note").textContent =
+    "Sorted by what £1,000 became. \"Shuffled histories that matched it\" reruns the same rules on 300 versions of the year with the " +
+    "CYPH/ZEC moves put in random order (so there is nothing real to find). Under 5% would mean the result is hard to put down to luck. " +
+    "It doesn't apply to simply holding.";
+  const rows = [
+    { key: "rotation", shorting: "No", p: pv.rotation },
+    { key: "hold_zec", shorting: "No" },
+    { key: "hold_5050", shorting: "No" },
+    { key: "hold_cyph", shorting: "No" },
+    { key: "pairs", shorting: "Yes, both assets", p: pv.pairs },
+    { key: "long_only", shorting: "No", p: pv.long_only },
+  ].sort((a, b) => st[b.key].final - st[a.key].final);
+  const t = $("compare");
+  const head = el("tr");
+  ["Strategy", "£1,000 became", "Return", "Worst drawdown", "Sharpe", "Needs shorting", "Shuffled histories that matched it (hours / days)"]
+    .forEach(h => head.append(el("th", {}, h)));
+  const thead = el("thead"); thead.append(head);
+  const tbody = el("tbody");
+  for (const r of rows) {
+    const s = SERIES.find(x => x.key === r.key), v = st[r.key];
+    const tr = el("tr", r.key === "rotation" ? { class: "best" } : {});
+    const name = el("td"); const wrap = el("span", { class: "strat" }); const key = el("span", { class: "key" });
+    key.style.background = `var(${s.color})`;
+    wrap.append(key, el("span", {}, s.name)); name.append(wrap);
+    tr.append(name,
+      el("td", { class: "mono" }, gbp(v.final)),
+      el("td", { class: "mono" }, pct(v.return_pct)),
+      el("td", { class: "mono" }, pct(v.max_dd_pct)),
+      el("td", { class: "mono" }, v.sharpe.toFixed(2)),
+      el("td", {}, r.shorting),
+      el("td", { class: "mono" }, r.p ? `${Math.round(r.p.hours * 100)}% / ${Math.round(r.p.days * 100)}%` : "n/a"));
+    tbody.append(tr);
+  }
+  t.append(thead, tbody);
+})();
+
+/* ---------- robustness heatmap + walk-forward ---------- */
+function mix(a, b, t) {
+  const p = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+  const A = p(a), B = p(b);
+  return A.map((c, k) => Math.round(c + (B[k] - c) * t));
+}
+function renderHeat() {
+  const G = DATA.grid, t = $("heat");
+  t.replaceChildren();
+  const maxAbs = Math.max(...G.values.flat().map(Math.abs));
+  const head = el("tr");
+  head.append(el("th", {}, "Lookback \\ entry"));
+  G.thresholds.forEach(e => head.append(el("th", {}, "±" + e)));
+  const thead = el("thead"); thead.append(head);
+  const tbody = el("tbody");
+  const names = { 35: "35 h (~1 week)", 70: "70 h (~2 weeks)", 140: "140 h (~1 month)" };
+  G.lookbacks.forEach((lb, r) => {
+    const tr = el("tr");
+    tr.append(el("td", {}, names[lb] || lb + " h"));
+    G.thresholds.forEach((e, c) => {
+      const v = G.values[r][c];
+      const rgb = mix(css("--div-mid"), css(v >= 0 ? "--div-pos" : "--div-neg"), Math.min(1, Math.abs(v) / maxAbs));
+      const lum = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+      const chosen = lb === G.chosen.lookback && e === G.chosen.entry;
+      const td = el("td", chosen ? { class: "chosen" } : {}, pct(v));
+      td.style.background = `rgb(${rgb.join(",")})`;
+      td.style.color = lum > 0.55 ? "#0f1720" : "#ffffff";
+      if (chosen) td.setAttribute("aria-label", `${pct(v)}, the recommended setting`);
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  t.append(thead, tbody);
+}
+(function why() {
+  const G = DATA.grid;
+  const col = G.thresholds.indexOf(G.chosen.entry);
+  const colVals = G.values.map(r => r[col]);
+  const colMin = c => Math.min(...G.values.map(r => r[c]));
+  const bestWorst = G.thresholds.every((_, c) => colMin(c) <= colMin(col));
+  const neighbours = [col + 1, col + 2].filter(c => c < G.thresholds.length);
+  const neighboursOk = neighbours.length && neighbours.every(c => colMin(c) > 0);
+  $("heat-intro").textContent =
+    `How far the rotation finished ahead of a 50/50 mix rebalanced at the same moments, with the stop set 1.5 beyond entry. ` +
+    `Entry ±${G.chosen.entry} was ${colMin(col) > 0 ? "positive at every lookback" : "mixed across lookbacks"} ` +
+    `(${colVals.map(v => pct(v)).join(", ")})${bestWorst ? " and had the best worst case" : ""}. ` +
+    (neighboursOk ? `Its neighbours at ${neighbours.map(c => G.thresholds[c]).join(" and ")} also held up, so the result ` +
+      `doesn't depend on hitting one exact number. ` : "") +
+    `Results fade at the highest thresholds.`;
+  $("heat-note").textContent =
+    `Measured from ${G.window_start}, when the longest lookback has enough history, so every cell covers the same dates. ` +
+    `Outlined: the recommended setting.`;
+  const w = $("walk");
+  const b = G.best_h1;
+  w.append(
+    el("h3", {}, "Would you have picked it in advance?"),
+    el("p", {},
+      `Test: choose the best of ${G.n_settings} settings using only data up to ${G.split}, then see how it did afterwards ` +
+      `(measured against the same-time 50/50).`),
+    el("div", { class: "big num" }, `${pct(b.h1)} → ${pct(b.h2)}`),
+    el("p", {},
+      `The best first-half setting (${b.lookback} h lookback, entry ±${b.entry}, ${b.stop === null ? "no stop" : "stop +" + b.stop}) ` +
+      `went from ${pct(b.h1)} ahead to ${pct(b.h2)} afterwards. The five best first-half settings averaged ${pct(G.top5_h2_mean, 1)} later, ` +
+      `and only ${G.share_positive_both}% of all settings were ahead in both halves.`),
+    el("p", { class: "muted" },
+      `The recommended setting did ${pct(G.chosen_h1)} then ${pct(G.chosen_h2)}, but it was chosen with hindsight of the whole year. ` +
+      `Picking on past results did not carry forward reliably, so expect a smaller edge from here than the chart shows.`)
+  );
+})();
+
+/* ---------- caveats ---------- */
+(function caveats() {
+  const items = [
+    ["It isn't proven.", `Shuffled histories matched the result ${Math.round(pv.rotation.hours * 100)}% of the time (${Math.round(pv.rotation.days * 100)}% with day shuffles). ` +
+      "The usual bar is 5%. One year of one pair can't separate a modest edge from luck."],
+    ["It's a Zcash bet first.", `The pot is always 100% in CYPH and ZEC, so its worst drawdown was ${pct(st.rotation.max_dd_pct)}, ` +
+      `about the same as holding (${pct(st.hold_5050.max_dd_pct)} for 50/50). If the Zcash trade falls, this falls with it.`],
+    ["Live results will likely be smaller.", "Part of the backtest edge looks like short-term intraday bounce in CYPH's hourly prices, " +
+      "which is hard to capture. CYPH is a volatile small cap, so real fills may cost more than 0.2%."],
+    ["You need both assets on one platform.", `Each switch sells one asset and buys the other within the hour, ${DATA.rotation.tilts} tilts ` +
+      "and as many returns to 50/50 over the period. That needs a broker that holds both US shares and spot ZEC, or cash kept ready on both sides. " +
+      "CYPH only trades in US market hours."],
+    ["Short history.", "CYPH has only traded as a Zcash treasury company since November 2025, so there are about 10 months of hourly data, " +
+      "covering one big rally and one deep sell-off."],
+    ["Settings were chosen on the same data.", "The recommendation sits in the middle of the region that worked, which limits the damage, " +
+      "but the walk-forward test above shows how much in-sample choices can fade."],
+  ];
+  for (const [title, body] of items) {
+    const li = el("li");
+    li.append(el("strong", {}, title), el("span", { class: "muted" }, body));
+    $("caveats").append(li);
+  }
+})();
+
+/* ---------- boot + theme / resize ---------- */
+buildLegend();
+render();
+renderHeat();
+let lastWidth = 0;
+new ResizeObserver(entries => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w !== lastWidth) { lastWidth = w; render(); }
+}).observe($("chart-wrap"));
+const rerender = () => { render(); renderHeat(); };
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rerender);
+new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>

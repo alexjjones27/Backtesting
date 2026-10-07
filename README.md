@@ -9,6 +9,26 @@ the cheap one. A [shuffled-history test](#is-any-of-it-better-than-chance) check
 
 The full auto-generated report, with every table and chart, is in **[results/REPORT.md](results/REPORT.md)**.
 
+## Recommended strategy
+
+Of every version tested, the best was the **50/50 rotation** with a 70-hour lookback, entry ±1.5 and a stop at ±3.0:
+
+* hold 50% CYPH / 50% ZEC by default;
+* move to 100% CYPH when z < −1.5 (CYPH cheap), or to 100% ZEC when z > +1.5 (ZEC cheap);
+* go back to 50/50 when z crosses 0, or if z reaches ±3.0 (stop-loss).
+
+From 1 Dec 2025 to 6 Oct 2026, £1,000 grew to **£5,415** (+442%, worst drawdown −58%). That compares with
+£3,861 for holding ZEC, £3,197 for holding 50/50, £2,053 for the hedged pairs trade and £1,988 for long-only, all
+after costs. Entry ±1.5 sits in the middle of the range of settings that worked, and it was positive at every
+lookback tested, rather than being the single best cell.
+
+It is **not statistically proven**: shuffled histories matched it 8% of the time (14% with day shuffles). A
+walk-forward test also shows that settings picked on the first half of the year added little in the second half. See
+[Is any of it better than chance?](#is-any-of-it-better-than-chance).
+
+`python make_dashboard.py` builds `results/dashboard.html`, an interactive page with the equity curves, comparison
+table, robustness grid and walk-forward test.
+
 ## The strategy
 
 * **Spread** = ln(CYPH) − ln(ZEC): CYPH's price relative to ZEC.
@@ -273,6 +293,7 @@ python run_backtest.py --refresh       # re-downloads the latest year first
 python run_backtest.py --leg-notional 500 --cost-bps-cyph 30 --borrow-cyph 0.25 --lookback 35
 python run_long_only.py                # long-only "buy the cheap one" variant
 python run_rotation.py                 # rotation variant + shuffled-history significance test (~1 minute)
+python make_dashboard.py               # interactive results page (run run_rotation.py first)
 python -m pytest                       # engine tests (look-ahead, sizing, costs, stops, attribution)
 ```
 
@@ -291,6 +312,7 @@ python -m pytest                       # engine tests (look-ahead, sizing, costs
 | `pairs_backtest/report.py` | Charts. |
 | `run_backtest.py` | Runs the threshold grid, lookback grid, robustness variants and half-period split, then writes `results/`. |
 | `run_long_only.py` | Runs the long-only variant with attribution and benchmarks, then writes `results/long_only/`. |
+| `make_dashboard.py`, `dashboard/template.html` | Builds `results/dashboard.html`: recommended strategy, equity curves vs alternatives, robustness grid, walk-forward test. |
 | `run_rotation.py` | Runs the rotation variant and the shuffled-history test for all three versions, then writes `results/rotation/`. |
 | `data/` | Cached raw data: `cyph_1h.csv`, `zec_15m.csv`, `gbpusd_1h.csv`. |
 | `results/` | `REPORT.md`, charts, per-threshold summaries, every trade (`trades_headline.csv`) and hourly equity curves. |

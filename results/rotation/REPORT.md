@@ -114,4 +114,4 @@ The long-only version's selection part is exactly half the pairs trade's gross P
 
 * `summary_rotation_none.csv`, `summary_rotation_stop.csv`: all metrics per threshold
 * `benchmarks.csv`: buy & hold results
-* `significance.csv`: the shuffled-history tables above
+* `significance.csv`: the shuffled-history tables above (`pvalues.csv` has the same p-values in long form)

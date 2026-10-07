@@ -197,6 +197,14 @@ def main() -> None:
         "stop": significance_table(actual[k:], *(None if p[b] is None else p[b][k:] for b in ("bar", "day"))),
     }
     pd.concat([s.assign(variant=v) for v, s in sig.items()]).to_csv(OUT / "significance.csv", index=False)
+    if p["bar"] is not None:
+        # The same p-values in long form, one row per strategy / setting / shuffle style.
+        strategy = {"pair_gross_gbp": "long_only_selection", "pair_net_gbp": "pairs", "rotation_log_excess": "rotation"}
+        pd.DataFrame([
+            {"variant": "none" if i < k else "stop", "entry_z": c.entry_z, "strategy": strategy[name],
+             "shuffle": "hours" if b == "bar" else "days", "p": p[b][i, j]}
+            for b in ("bar", "day") for i, c in enumerate(all_cfgs) for j, name in enumerate(STAT_NAMES)
+        ]).to_csv(OUT / "pvalues.csv", index=False)
 
     # Charts.
     report.plot_relative_wealth({e: rels[("none", e)] for e in CHART_THRESHOLDS}, CHARTS / "rot_01_relative_wealth.png")
@@ -309,7 +317,7 @@ The long-only version's selection part is exactly half the pairs trade's gross P
 
 * `summary_rotation_none.csv`, `summary_rotation_stop.csv`: all metrics per threshold
 * `benchmarks.csv`: buy & hold results
-* `significance.csv`: the shuffled-history tables above
+* `significance.csv`: the shuffled-history tables above (`pvalues.csv` has the same p-values in long form)
 """
     (OUT / "REPORT.md").write_text(text)
 
