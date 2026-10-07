@@ -2,7 +2,8 @@
 
 An hourly z-score mean-reversion backtest of **Cypherpunk Technologies (Nasdaq: CYPH)** against **Zcash (ZEC)**.
 The test starts with a £10,000 portfolio, puts £1,000 on each leg of every trade, and compares a range of entry
-thresholds.
+thresholds. A [long-only variant](#long-only-variant-just-buy-whichever-asset-is-cheap) buys whichever asset is
+cheap instead of trading the hedged pair.
 
 The full auto-generated report, with every table and chart, is in **[results/REPORT.md](results/REPORT.md)**.
 
@@ -101,6 +102,72 @@ re-entered until z is back inside the entry band.
 * **Data quirks.** Yahoo has no CYPH bars from 30 Jan 11:30 to 2 Feb 12:30 ET (2026). A few bars report zero volume;
   they are kept because their prices are valid. Yahoo's 16:00 and half-day 13:00 snapshot bars are dropped.
 
+## Long-only variant: just buy whichever asset is cheap
+
+`python run_long_only.py` writes **[results/long_only/REPORT.md](results/long_only/REPORT.md)**.
+
+This uses the same signal with no short leg. When z < −threshold, CYPH is cheap relative to ZEC, so it buys £1,000 of
+CYPH. When z > +threshold, ZEC is cheap relative to CYPH, so it buys £1,000 of ZEC. It sells when z returns to 0 and
+holds cash otherwise. With no short, there is no borrow cost and nothing that needs crypto derivatives.
+
+### How it can count as a relative-value trade
+
+Buying £1,000 of the cheap asset is exactly the same position as:
+
+1. **£500 of each asset (the "market part").** This is the direction of the whole Zcash trade. You would earn it
+   holding either asset, and it says nothing about the signal.
+2. **£500 long the cheap asset and £500 short the rich one (the "selection part").** This is a half-size version of
+   the pairs trade above, and it is the only part that tests the "cheap vs rich" idea.
+
+So the long-only version only qualifies as relative value if the **selection part** is positive and better than
+chance. The report checks this three ways:
+
+* **Coin-flip test:** keep each trade's timing but pick the asset at random, 20,000 times.
+* **Random-timing test:** keep each trade's length but start it at a random hour.
+* **Buy & hold:** compare against £1,000 in ZEC, CYPH or 50/50, held from the first possible signal on 1 Dec 2025.
+
+### Results (70-bar lookback, exit at z = 0, after costs)
+
+| Entry \|z\| | Trades | Net P&L | Market part | Selection part | Coin-flip p | Random-timing p | Max drawdown |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 41 | **£2,447** | £2,066 | £551 | 0.09 | 0.30 | −£829 |
+| 1.5 | 29 | **£2,442** | £2,169 | £394 | 0.16 | 0.22 | −£703 |
+| 2 | 19 | **£2,507** | £2,258 | £330 | 0.21 | 0.10 | −£518 |
+| 2.5 | 10 | **£1,871** | £2,107 | −£192 | 0.68 | 0.06 | −£477 |
+| 3 | 6 | **£2,076** | £2,327 | −£222 | 0.70 | 0.01 | −£224 |
+| _Buy & hold ZEC_ | 1 | **£2,866** | | | | | −£1,006 |
+| _Buy & hold 50/50_ | 1 | **£2,201** | | | | | −£880 |
+| _Buy & hold CYPH_ | 1 | **£1,536** | | | | | −£926 |
+
+Net P&L = market part + selection part − costs. A p-value is the share of random trials that did at least as well,
+so lower is better and below about 0.05 would suggest skill.
+
+![Where the long-only P&L came from](results/long_only/charts/lo_01_attribution.png)
+
+### What it shows
+
+1. **Long-only made far more money than the pairs trade (+19% to +26% on the £10,000), but mostly from the market
+   rising.** At thresholds 1.0 to 2.0, 79% to 87% of the gross P&L was the market part. Buying the *rich* asset
+   on every signal instead would still have made £1,350 to £2,520.
+2. **The selection part is the pairs trade's edge, halved.** At thresholds 1.0 to 2.0 it was +£330 to +£551, exactly
+   half the hedged trade's gross P&L. Random asset picks did as well 9% to 21% of the time, so it isn't
+   distinguishable from luck.
+3. **It beat holding 50/50, but not holding ZEC.** At thresholds 1.0 to 2.0 it made £240 to £420 more than holding
+   50/50, while invested only 46% to 70% of the time and with smaller drawdowns. Simply holding ZEC made more
+   (£2,866).
+4. **With the stop-loss (entry + 1.5), the selection part passes the coin-flip test (p 0.01 to 0.02, +£632 to
+   +£787),** matching the improvement the stop gave the pairs trade. But total P&L falls to £758 to £1,283, because
+   the stops took it out of the market during the big rallies.
+5. **At the high thresholds (2.75 to 3.0), selection was negative but the timing looked good (p ≈ 0.01).** Four of
+   the five "buy CYPH" signals came right after sharp sell-offs in both assets (April, May and June 2026), and both
+   then rose roughly 35% to 60%. That's a "buy after a crash" effect, not relative value, and it rests on 6 trades.
+   With this many thresholds and variants tested, an occasional p ≈ 0.01 is expected by chance.
+
+**Bottom line:** the long-only version's relative-value content is just the pairs trade at half size. Here it was
+positive without a stop and only proved itself with one. The rest of the P&L is a bet on the Zcash complex going up.
+If you want that exposure anyway, a fairer way to use the signal is as a rule for *which* of the two to hold, judged
+against a 50/50 holding.
+
 ## Running it
 
 ```bash
@@ -108,7 +175,8 @@ pip install -r requirements.txt
 python run_backtest.py                 # uses the cached data in data/
 python run_backtest.py --refresh       # re-downloads the latest year first
 python run_backtest.py --leg-notional 500 --cost-bps-cyph 30 --borrow-cyph 0.25 --lookback 35
-python -m pytest                       # engine tests (no look-ahead, sizing, costs, stops)
+python run_long_only.py                # long-only "buy the cheap one" variant
+python -m pytest                       # engine tests (look-ahead, sizing, costs, stops, attribution)
 ```
 
 `python run_backtest.py --help` lists every option. Each run rewrites `results/`.
@@ -119,9 +187,11 @@ python -m pytest                       # engine tests (no look-ahead, sizing, co
 |---|---|
 | `pairs_backtest/data.py` | Downloads CYPH and GBP/USD hourly bars (Yahoo Finance) and ZEC-USD 15-minute candles (Coinbase), caches them as CSV, and aligns them. ZEC is priced at the exact open and close time of each CYPH bar. CYPH bars run from :30 to :30, so 15-minute ZEC candles avoid a 30-minute mismatch. |
 | `pairs_backtest/engine.py` | Bar-by-bar backtest: z-score, entries/exits, next-bar-open fills, whole-share sizing for CYPH, fees, borrow, FX and mark-to-market equity. |
+| `pairs_backtest/attribution.py` | Splits long-only P&L into market and selection parts; coin-flip, random-timing and buy & hold benchmarks. |
 | `pairs_backtest/metrics.py` | Trade and portfolio statistics, plus pair diagnostics (correlation, beta, Dickey-Fuller, half-life). |
 | `pairs_backtest/report.py` | Charts. |
 | `run_backtest.py` | Runs the threshold grid, lookback grid, robustness variants and half-period split, then writes `results/`. |
+| `run_long_only.py` | Runs the long-only variant with attribution and benchmarks, then writes `results/long_only/`. |
 | `data/` | Cached raw data: `cyph_1h.csv`, `zec_15m.csv`, `gbpusd_1h.csv`. |
 | `results/` | `REPORT.md`, charts, per-threshold summaries, every trade (`trades_headline.csv`) and hourly equity curves. |
 | `tests/` | Unit tests for the engine on synthetic data. |

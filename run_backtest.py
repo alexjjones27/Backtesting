@@ -16,6 +16,7 @@ from pairs_backtest.data import NY_TZ, load_panel
 from pairs_backtest.engine import Config, compute_zscore, run_backtest
 from pairs_backtest.metrics import pair_diagnostics, summarize
 from pairs_backtest import report
+from pairs_backtest.report import gbp, md_table
 
 ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT / "results"
@@ -41,17 +42,6 @@ def parse_args() -> argparse.Namespace:
 
 
 # ---------------------------------------------------------------- formatting
-
-
-def gbp(x: float) -> str:
-    return f"£{x:,.0f}" if x >= 0 else f"-£{-x:,.0f}"
-
-
-def md_table(df: pd.DataFrame) -> str:
-    cols = list(df.columns)
-    lines = ["| " + " | ".join(cols) + " |", "|" + "|".join("---:" for _ in cols) + "|"]
-    lines += ["| " + " | ".join(str(v) for v in row) + " |" for row in df.itertuples(index=False)]
-    return "\n".join(lines)
 
 
 def headline_table(summary: pd.DataFrame, leg_notional: float) -> pd.DataFrame:

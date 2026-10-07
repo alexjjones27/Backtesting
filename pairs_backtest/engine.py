@@ -11,6 +11,10 @@ Z-score = (spread - rolling mean) / rolling std over `lookback` hourly bars.
 Each trade puts `leg_notional_gbp` (default GBP 1,000) on EACH leg, converted to
 USD at the fill-time GBPUSD rate, so the position is dollar-neutral.
 
+mode="long_only" uses the same signal but drops the short leg: it simply buys
+whichever asset is cheap relative to the other (CYPH when z < -entry_z, ZEC when
+z > +entry_z) with `leg_notional_gbp`, and holds cash otherwise.
+
 Timing (no look-ahead): the z-score is computed from closes up to and including
 bar t; any resulting order is filled at the OPEN of bar t+1 (the next tradeable
 price - overnight signals fill at the next morning's open).
@@ -28,7 +32,10 @@ SECONDS_PER_YEAR = 365.0 * 24 * 3600
 
 SHORT_CYPH = -1  # short spread: short CYPH, long ZEC
 LONG_CYPH = 1  # long spread: long CYPH, short ZEC
-DIRECTION_LABEL = {SHORT_CYPH: "Short CYPH / Long ZEC", LONG_CYPH: "Long CYPH / Short ZEC"}
+DIRECTION_LABEL = {
+    "pair": {SHORT_CYPH: "Short CYPH / Long ZEC", LONG_CYPH: "Long CYPH / Short ZEC"},
+    "long_only": {SHORT_CYPH: "Buy ZEC (cheap vs CYPH)", LONG_CYPH: "Buy CYPH (cheap vs ZEC)"},
+}
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,7 @@ class Config:
     stop_z: float | None = None  # close if |z| moves further against us to this level
     max_hold_bars: int | None = None  # time stop, in hourly bars
     direction: str = "both"  # "both" | "short_cyph_only" | "long_cyph_only"
+    mode: str = "pair"  # "pair" (long cheap + short rich) | "long_only" (buy the cheap asset only)
     initial_capital_gbp: float = 10_000.0
     leg_notional_gbp: float = 1_000.0
     cost_bps_cyph: float = 20.0  # fees + spread/slippage per side, CYPH leg
@@ -102,6 +110,8 @@ def run_backtest(panel: pd.DataFrame, cfg: Config) -> Result:
     fx_o, fx_c = panel["fx_open"].to_numpy(), panel["fx_close"].to_numpy()
     c_cyph, c_zec = cfg.cost_bps_cyph / 1e4, cfg.cost_bps_zec / 1e4
 
+    if cfg.mode not in DIRECTION_LABEL:
+        raise ValueError(f"unknown mode {cfg.mode!r}")
     allowed = {
         "both": {SHORT_CYPH, LONG_CYPH},
         "short_cyph_only": {SHORT_CYPH},
@@ -129,7 +139,7 @@ def run_backtest(panel: pd.DataFrame, cfg: Config) -> Result:
             {
                 "entry_time": pos.entry_time,
                 "exit_time": when,
-                "direction": DIRECTION_LABEL[pos.side],
+                "direction": DIRECTION_LABEL[cfg.mode][pos.side],
                 "side": pos.side,
                 "entry_z": pos.entry_z,
                 "exit_z": z_exit,
@@ -140,6 +150,8 @@ def run_backtest(panel: pd.DataFrame, cfg: Config) -> Result:
                 "zec_exit": zec_px,
                 "cyph_shares": pos.q_cyph,
                 "zec_units": pos.q_zec,
+                "fx_entry": pos.fx_entry,
+                "fx_exit": fx,
                 "bars_held": i - pos.entry_idx,
                 "hours_held": (when - pos.entry_time).total_seconds() / 3600,
                 "gross_pnl_gbp": gross_gbp,
@@ -162,6 +174,8 @@ def run_backtest(panel: pd.DataFrame, cfg: Config) -> Result:
                 notional_usd = cfg.leg_notional_gbp * fx_o[i]
                 q_cyph = side * math.floor(notional_usd / cyph_o[i])  # whole shares
                 q_zec = -side * notional_usd / zec_o[i]  # crypto is fractional
+                if cfg.mode == "long_only":
+                    q_cyph, q_zec = max(q_cyph, 0), max(q_zec, 0.0)
                 entry_cost_gbp = (abs(q_cyph) * cyph_o[i] * c_cyph + abs(q_zec) * zec_o[i] * c_zec) / fx_o[i]
                 realized -= entry_cost_gbp
                 pos = _Position(side, i, bar_start[i], z[i - 1], fx_o[i], cyph_o[i], zec_o[i], q_cyph, q_zec, entry_cost_gbp)

@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from pairs_backtest.engine import LONG_CYPH, SHORT_CYPH, Config, compute_zscore, run_backtest
+from pairs_backtest.attribution import attribute, coin_flip_test
 from pairs_backtest.metrics import summarize
 
 FX = 1.25
@@ -118,3 +119,39 @@ def test_no_entry_when_z_already_beyond_stop():
     cyph[50] *= 1.10  # single-bar gap that takes z far past the stop level
     res = run_backtest(make_panel(cyph, zec), Config(entry_z=1.0, stop_z=2.0, lookback=20, **ZERO_COSTS))
     assert res.trades.empty or (res.trades["entry_z"].abs() < 2.0).all()
+
+
+def test_long_only_buys_the_cheap_asset_without_shorting():
+    cyph, zec = noisy_flat(80)
+    cyph[50] *= 0.90  # CYPH cheap vs ZEC
+    res = run_backtest(make_panel(cyph, zec), Config(entry_z=2.0, lookback=20, mode="long_only", borrow_rate_zec=0.5))
+    t = res.trades.iloc[0]
+    assert t["direction"].startswith("Buy CYPH")
+    assert t["cyph_shares"] > 0 and t["zec_units"] == 0
+    assert (res.trades["borrow_gbp"] == 0).all()
+
+    cyph, zec = noisy_flat(80)
+    cyph[50] *= 1.10  # CYPH rich, so ZEC is the cheap one
+    t = run_backtest(make_panel(cyph, zec), Config(entry_z=2.0, lookback=20, mode="long_only")).trades.iloc[0]
+    assert t["direction"].startswith("Buy ZEC")
+    assert t["zec_units"] > 0 and t["cyph_shares"] == 0
+
+
+def test_long_only_selection_is_half_the_pairs_trade():
+    rng = np.random.default_rng(5)
+    cyph = 2.0 * np.exp(np.cumsum(rng.normal(0, 0.02, 400)))
+    zec = 400.0 * np.exp(np.cumsum(rng.normal(0, 0.02, 400)))
+    panel = make_panel(cyph, zec)
+    pair = run_backtest(panel, Config(entry_z=1.5, lookback=30, **ZERO_COSTS))
+    att = attribute(run_backtest(panel, Config(entry_z=1.5, lookback=30, mode="long_only", **ZERO_COSTS)).trades)
+    assert len(att) > 3
+    np.testing.assert_allclose(att["market_gbp"] + att["selection_gbp"], att["gross_pnl_gbp"])
+    # Same trades, so the long-only selection edge is half the hedged spread P&L
+    # (up to whole-share rounding on the CYPH leg).
+    assert att["selection_gbp"].sum() == pytest.approx(pair.trades["gross_pnl_gbp"].sum() / 2, abs=5)
+
+
+def test_coin_flip_rejects_a_perfect_picker():
+    att = pd.DataFrame({"gross_pnl_gbp": np.full(12, 50.0), "other_gross_gbp": np.full(12, -50.0)})
+    p, sims = coin_flip_test(att, n_sims=5000)
+    assert p < 0.01 and sims.max() <= 600

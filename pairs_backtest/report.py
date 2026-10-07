@@ -74,6 +74,17 @@ def _gbp(x, _pos=None) -> str:
     return f"£{x:,.0f}" if x >= 0 else f"-£{-x:,.0f}"
 
 
+def gbp(x: float) -> str:
+    return _gbp(x)
+
+
+def md_table(df: pd.DataFrame) -> str:
+    cols = list(df.columns)
+    lines = ["| " + " | ".join(cols) + " |", "|" + "|".join("---:" for _ in cols) + "|"]
+    lines += ["| " + " | ".join(str(v) for v in row) + " |" for row in df.itertuples(index=False)]
+    return "\n".join(lines)
+
+
 def plot_prices(panel: pd.DataFrame, path: Path) -> None:
     t = _local(panel.index)
     cyph = panel["cyph_close"] / panel["cyph_close"].iloc[0] * 100
@@ -193,4 +204,71 @@ def plot_heatmap(grid: pd.DataFrame, path: Path) -> None:
     ax.set_title("Net P&L (GBP) by entry threshold and z-score lookback")
     cb = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.01, format=matplotlib.ticker.FuncFormatter(_gbp))
     cb.outline.set_visible(False)
+    _save(fig, path)
+
+
+# ---------------------------------------------------------------- long-only charts
+
+AQUA, YELLOW = "#1baf7a", "#eda100"
+MARKET_GREY = "#a9a79f"
+
+
+def plot_attribution(attr: pd.DataFrame, path: Path) -> None:
+    """Long-only P&L per threshold split into market (basket) and selection parts."""
+    x = np.arange(len(attr))
+    w = 0.36
+    fig, ax = plt.subplots(figsize=(11, 4.4))
+    ax.bar(x - w / 2 - 0.01, attr["market_gbp"], width=w, color=MARKET_GREY,
+           label="Market: what a 50/50 basket made over the same hours")
+    ax.bar(x + w / 2 + 0.01, attr["selection_gbp"], width=w, color=BLUE,
+           label="Selection: extra from picking the cheap asset")
+    ax.plot(x, attr["net_pnl_gbp"], "o", color=INK, markersize=6, markeredgecolor=SURFACE,
+            markeredgewidth=2, label="Net P&L after costs")
+    for xi, v in zip(x, attr["net_pnl_gbp"]):
+        ax.annotate(_gbp(v), (xi, v), xytext=(0, 9), textcoords="offset points", ha="center", color=INK, fontsize=9)
+    ax.axhline(0, color=AXIS, linewidth=1)
+    lo, hi = ax.get_ylim()
+    ax.set_ylim(lo, hi + 0.08 * (hi - lo))
+    ax.set_xticks(x, [f"{z:g}" for z in attr["entry_z"]])
+    ax.set_xlabel("Entry threshold |z|")
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_gbp))
+    ax.set_title("Long-only: where the P&L came from", pad=30)
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncols=3, fontsize=9)
+    _save(fig, path)
+
+
+def plot_long_only_equity(curves: dict[str, pd.Series], path: Path) -> None:
+    """Up to four equity curves (strategies and buy-and-hold benchmarks)."""
+    colors = [BLUE, ORANGE, AQUA, YELLOW]
+    fig, ax = plt.subplots(figsize=(11, 4.6))
+    for (name, eq), color in zip(curves.items(), colors):
+        ax.plot(_local(eq.index), eq, color=color, label=name)
+    ax.axhline(10_000, color=INK_2, linewidth=0.9)
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_gbp))
+    ax.set_ylabel("Equity (GBP)")
+    ax.set_title("Long-only signal vs simply holding (£1,000 per position, £10,000 portfolio, after costs)", pad=30)
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncols=4, fontsize=9)
+    _save(fig, path)
+
+
+def plot_coin_flip(sims: dict[float, tuple[np.ndarray, float]], path: Path) -> None:
+    """Histogram of gross P&L from random asset picks, with the signal's result marked."""
+    fig, axes = plt.subplots(1, len(sims), figsize=(11, 3.8), sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, (entry_z, (dist, actual)) in zip(axes, sims.items()):
+        ax.hist(dist, bins=40, color=BLUE, alpha=0.35, edgecolor=SURFACE, linewidth=0.6)
+        ax.axvline(actual, color=INK, linewidth=1.8)
+        p = (dist >= actual - 1e-9).mean()
+        right_half = actual > np.mean(ax.get_xlim())
+        ax.annotate(f"Signal: {_gbp(actual)}\n{p:.0%} of random picks did as well", (actual, ax.get_ylim()[1] * 0.92),
+                    xytext=(-6 if right_half else 6, 0), textcoords="offset points", va="top",
+                    ha="right" if right_half else "left", fontsize=9, color=INK,
+                    bbox=dict(facecolor=SURFACE, edgecolor="none", pad=1.5))
+        ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_gbp))
+        ax.set_title(f"Entry |z| > {entry_z:g}", fontsize=10)
+        ax.set_xlabel("Gross P&L, same trade timing, asset picked at random")
+    axes[0].set_ylabel("Simulations")
+    fig.suptitle("Coin-flip test: is picking the 'cheap' asset better than picking at random?",
+                 x=0.01, ha="left", fontweight="bold", fontsize=12)
+    fig.tight_layout()
     _save(fig, path)
