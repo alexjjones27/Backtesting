@@ -34,21 +34,6 @@ def attribute(trades: pd.DataFrame) -> pd.DataFrame:
     return t
 
 
-def coin_flip_test(att: pd.DataFrame, n_sims: int = 20_000, seed: int = 7) -> tuple[float, np.ndarray]:
-    """Keep every trade's timing but pick the asset at random.
-
-    Returns the share of random picks that did at least as well as the signal
-    (a one-sided p-value) and the simulated gross P&L totals.
-    """
-    if att.empty:
-        return float("nan"), np.array([])
-    actual = att["gross_pnl_gbp"].to_numpy()
-    other = att["other_gross_gbp"].to_numpy()
-    picks = np.random.default_rng(seed).integers(0, 2, size=(n_sims, len(att))).astype(bool)
-    sims = np.where(picks, actual, other).sum(axis=1)
-    return float((sims >= actual.sum() - 1e-9).mean()), sims
-
-
 def random_timing_test(panel: pd.DataFrame, att: pd.DataFrame, start_idx: int,
                        n_sims: int = 10_000, seed: int = 11) -> tuple[float, np.ndarray]:
     """Keep every trade's size and holding time but start it at a random bar.

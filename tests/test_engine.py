@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from pairs_backtest.engine import LONG_CYPH, SHORT_CYPH, Config, compute_zscore, run_backtest
-from pairs_backtest.attribution import attribute, coin_flip_test
+from pairs_backtest.attribution import attribute
 from pairs_backtest.metrics import summarize
 
 FX = 1.25
@@ -150,8 +150,3 @@ def test_long_only_selection_is_half_the_pairs_trade():
     # (up to whole-share rounding on the CYPH leg).
     assert att["selection_gbp"].sum() == pytest.approx(pair.trades["gross_pnl_gbp"].sum() / 2, abs=5)
 
-
-def test_coin_flip_rejects_a_perfect_picker():
-    att = pd.DataFrame({"gross_pnl_gbp": np.full(12, 50.0), "other_gross_gbp": np.full(12, -50.0)})
-    p, sims = coin_flip_test(att, n_sims=5000)
-    assert p < 0.01 and sims.max() <= 600

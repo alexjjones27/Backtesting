@@ -237,7 +237,9 @@ def plot_attribution(attr: pd.DataFrame, path: Path) -> None:
     _save(fig, path)
 
 
-def plot_long_only_equity(curves: dict[str, pd.Series], path: Path) -> None:
+def plot_long_only_equity(curves: dict[str, pd.Series], path: Path,
+                          title: str = "Long-only signal vs simply holding (£1,000 per position, £10,000 portfolio, after costs)",
+                          ) -> None:
     """Up to four equity curves (strategies and buy-and-hold benchmarks)."""
     colors = [BLUE, ORANGE, AQUA, YELLOW]
     fig, ax = plt.subplots(figsize=(11, 4.6))
@@ -246,29 +248,48 @@ def plot_long_only_equity(curves: dict[str, pd.Series], path: Path) -> None:
     ax.axhline(10_000, color=INK_2, linewidth=0.9)
     ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_gbp))
     ax.set_ylabel("Equity (GBP)")
-    ax.set_title("Long-only signal vs simply holding (£1,000 per position, £10,000 portfolio, after costs)", pad=30)
+    ax.set_title(title, pad=30)
     ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncols=4, fontsize=9)
     _save(fig, path)
 
 
-def plot_coin_flip(sims: dict[float, tuple[np.ndarray, float]], path: Path) -> None:
-    """Histogram of gross P&L from random asset picks, with the signal's result marked."""
-    fig, axes = plt.subplots(1, len(sims), figsize=(11, 3.8), sharey=True)
+def plot_null_distribution(dists: dict[str, tuple[np.ndarray, float]], path: Path, title: str, xlabel: str,
+                           fmt=_gbp, outcome: str = "shuffled histories did as well", ticks=None) -> None:
+    """Histogram of a statistic under the null, with the real result marked."""
+    fig, axes = plt.subplots(1, len(dists), figsize=(11, 3.8), sharey=True)
     axes = np.atleast_1d(axes)
-    for ax, (entry_z, (dist, actual)) in zip(axes, sims.items()):
+    for ax, (label, (dist, actual)) in zip(axes, dists.items()):
         ax.hist(dist, bins=40, color=BLUE, alpha=0.35, edgecolor=SURFACE, linewidth=0.6)
         ax.axvline(actual, color=INK, linewidth=1.8)
-        p = (dist >= actual - 1e-9).mean()
+        p = (dist >= actual - 1e-12).mean()
+        if ticks is not None:
+            ax.set_xticks(ticks)
+        ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: fmt(v)))
+        # Put the label in the corner away from the real result so it never covers the bars or the line.
         right_half = actual > np.mean(ax.get_xlim())
-        ax.annotate(f"Signal: {_gbp(actual)}\n{p:.0%} of random picks did as well", (actual, ax.get_ylim()[1] * 0.92),
-                    xytext=(-6 if right_half else 6, 0), textcoords="offset points", va="top",
-                    ha="right" if right_half else "left", fontsize=9, color=INK,
-                    bbox=dict(facecolor=SURFACE, edgecolor="none", pad=1.5))
-        ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_gbp))
-        ax.set_title(f"Entry |z| > {entry_z:g}", fontsize=10)
-        ax.set_xlabel("Gross P&L, same trade timing, asset picked at random")
-    axes[0].set_ylabel("Simulations")
-    fig.suptitle("Coin-flip test: is picking the 'cheap' asset better than picking at random?",
+        ax.text(0.02 if right_half else 0.98, 0.97, f"Real history: {fmt(actual)}\n{p:.0%} of {outcome}",
+                transform=ax.transAxes, ha="left" if right_half else "right", va="top", fontsize=9, color=INK)
+        ax.set_title(label, fontsize=10)
+        ax.set_xlabel(xlabel)
+    axes[0].set_ylabel("Shuffled histories")
+    fig.suptitle(title, x=0.01, ha="left", fontweight="bold", fontsize=12)
+    fig.tight_layout()
+    _save(fig, path)
+
+
+def plot_relative_wealth(curves: dict[float, pd.Series], path: Path) -> None:
+    """Small multiples of rotation value / same-time 50/50 value, one panel per threshold."""
+    fig, axes = plt.subplots(len(curves), 1, figsize=(11, 1.9 * len(curves)), sharex=True, sharey=True)
+    pct = {e: (rel - 1) * 100 for e, rel in curves.items()}
+    for ax, (entry_z, series) in zip(axes, pct.items()):
+        for other_z, other in pct.items():
+            if other_z != entry_z:
+                ax.plot(_local(other.index), other, color=AXIS, linewidth=1)
+        ax.plot(_local(series.index), series, color=BLUE, linewidth=1.8)
+        ax.axhline(0, color=INK_2, linewidth=0.9)
+        ax.set_title(f"Entry |z| > {entry_z:g}:  ended {series.iloc[-1]:+.0f}% vs same-time 50/50", fontsize=10)
+        ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
+    fig.suptitle("Rotation vs a 50/50 mix rebalanced at the same moments (the selection edge, after costs)",
                  x=0.01, ha="left", fontweight="bold", fontsize=12)
     fig.tight_layout()
     _save(fig, path)

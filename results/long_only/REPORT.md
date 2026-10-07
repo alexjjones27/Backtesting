@@ -23,10 +23,11 @@ Buying £1,000 of the cheap asset is the same position as:
    **selection part**, the only part that reflects the cheap/rich signal.
 
 So a long-only result only "qualifies" as relative value if the **selection part** is positive and
-better than chance. A big total P&L in a rising market proves nothing on its own. Three checks are used:
+better than chance. A big total P&L in a rising market proves nothing on its own.
 
-* **Coin-flip test:** keep every trade's timing but pick the asset at random, 20,000 times. The p-value is the share
-  of random picks that did at least as well as the signal. Below ~0.05 would suggest real skill.
+* **Is the selection part better than chance?** The selection part is exactly half the pairs trade's gross P&L, so
+  it is tested with the shuffled-history test in [the rotation report](../rotation/REPORT.md#is-any-of-it-better-than-chance),
+  which covers all three versions.
 * **Random-timing test:** keep every trade's length but start it at a random hour. This checks whether the market
   part came from good timing or just from being invested while prices rose.
 * **Buy & hold benchmarks:** £1,000 held in CYPH, ZEC or 50/50 from 01 Dec 2025
@@ -65,35 +66,33 @@ Period: 01 Dec 2025 → 06 Oct 2026. Each position is £1,000 in a
 Net P&L = market part + selection part − costs. "If you'd bought the rich asset" re-runs every trade with the
 *other* asset over the same hours.
 
-| Entry \|z\| | Net P&L | = Market part | + Selection part | − Costs | Selection share of gross | If you'd bought the rich asset | Coin-flip p | Random-timing p |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | £2,447 | £2,066 | £551 | £169 | 21% | £1,346 | 0.09 | 0.30 |
-| 1.25 | £2,474 | £2,208 | £408 | £141 | 16% | £1,658 | 0.16 | 0.24 |
-| 1.5 | £2,442 | £2,169 | £394 | £121 | 15% | £1,653 | 0.16 | 0.22 |
-| 1.75 | £2,625 | £2,275 | £459 | £109 | 17% | £1,707 | 0.13 | 0.15 |
-| 2 | £2,507 | £2,258 | £330 | £81 | 13% | £1,847 | 0.21 | 0.10 |
-| 2.25 | £2,047 | £2,124 | -£21 | £56 | -1% | £2,088 | 0.52 | 0.07 |
-| 2.5 | £1,871 | £2,107 | -£192 | £44 | -10% | £2,255 | 0.68 | 0.06 |
-| 2.75 | £2,076 | £2,327 | -£222 | £28 | -11% | £2,521 | 0.70 | 0.01 |
-| 3 | £2,076 | £2,327 | -£222 | £28 | -11% | £2,521 | 0.70 | 0.01 |
+| Entry \|z\| | Net P&L | = Market part | + Selection part | − Costs | Selection share of gross | If you'd bought the rich asset | Random-timing p |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | £2,447 | £2,066 | £551 | £169 | 21% | £1,346 | 0.30 |
+| 1.25 | £2,474 | £2,208 | £408 | £141 | 16% | £1,658 | 0.24 |
+| 1.5 | £2,442 | £2,169 | £394 | £121 | 15% | £1,653 | 0.22 |
+| 1.75 | £2,625 | £2,275 | £459 | £109 | 17% | £1,707 | 0.15 |
+| 2 | £2,507 | £2,258 | £330 | £81 | 13% | £1,847 | 0.10 |
+| 2.25 | £2,047 | £2,124 | -£21 | £56 | -1% | £2,088 | 0.07 |
+| 2.5 | £1,871 | £2,107 | -£192 | £44 | -10% | £2,255 | 0.06 |
+| 2.75 | £2,076 | £2,327 | -£222 | £28 | -11% | £2,521 | 0.01 |
+| 3 | £2,076 | £2,327 | -£222 | £28 | -11% | £2,521 | 0.01 |
 
 ![Attribution](charts/lo_01_attribution.png)
 
-![Coin-flip test](charts/lo_03_coin_flip.png)
-
 ### Same, with a z stop-loss at entry + 1.5
 
-| Entry \|z\| | Net P&L | = Market part | + Selection part | − Costs | Selection share of gross | If you'd bought the rich asset | Coin-flip p | Random-timing p |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | £758 | £176 | £787 | £206 | 82% | -£817 | 0.01 | 0.82 |
-| 1.25 | £976 | £408 | £731 | £162 | 64% | -£485 | 0.01 | 0.77 |
-| 1.5 | £988 | £439 | £683 | £134 | 61% | -£378 | 0.01 | 0.74 |
-| 1.75 | £803 | £225 | £700 | £122 | 76% | -£597 | 0.01 | 0.79 |
-| 2 | £1,283 | £746 | £632 | £95 | 46% | £19 | 0.02 | 0.52 |
-| 2.25 | £935 | £896 | £101 | £62 | 10% | £733 | 0.36 | 0.33 |
-| 2.5 | £1,428 | £1,539 | -£52 | £59 | -3% | £1,531 | 0.57 | 0.14 |
-| 2.75 | £1,867 | £2,215 | -£316 | £32 | -17% | £2,499 | 0.78 | 0.01 |
-| 3 | £1,952 | £2,223 | -£239 | £32 | -12% | £2,430 | 0.72 | 0.01 |
+| Entry \|z\| | Net P&L | = Market part | + Selection part | − Costs | Selection share of gross | If you'd bought the rich asset | Random-timing p |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | £758 | £176 | £787 | £206 | 82% | -£817 | 0.82 |
+| 1.25 | £976 | £408 | £731 | £162 | 64% | -£485 | 0.77 |
+| 1.5 | £988 | £439 | £683 | £134 | 61% | -£378 | 0.74 |
+| 1.75 | £803 | £225 | £700 | £122 | 76% | -£597 | 0.79 |
+| 2 | £1,283 | £746 | £632 | £95 | 46% | £19 | 0.52 |
+| 2.25 | £935 | £896 | £101 | £62 | 10% | £733 | 0.33 |
+| 2.5 | £1,428 | £1,539 | -£52 | £59 | -3% | £1,531 | 0.14 |
+| 2.75 | £1,867 | £2,215 | -£316 | £32 | -17% | £2,499 | 0.01 |
+| 3 | £1,952 | £2,223 | -£239 | £32 | -12% | £2,430 | 0.01 |
 
 ## Files
 

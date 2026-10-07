@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from pairs_backtest import report
-from pairs_backtest.attribution import attribute, buy_and_hold, coin_flip_test, random_timing_test
+from pairs_backtest.attribution import attribute, buy_and_hold, random_timing_test
 from pairs_backtest.data import NY_TZ, load_panel
 from pairs_backtest.engine import Config, compute_zscore, run_backtest
 from pairs_backtest.metrics import daily_equity, max_drawdown, summarize
@@ -55,7 +55,6 @@ def analyse(panel: pd.DataFrame, cfg: Config, start_idx: int):
     res = run_backtest(panel, cfg)
     s = summarize(res)
     att = attribute(res.trades) if not res.trades.empty else res.trades
-    p_coin, coin_sims = coin_flip_test(att) if not att.empty else (float("nan"), np.array([]))
     p_time, _ = random_timing_test(panel, att, start_idx) if not att.empty else (float("nan"), None)
     mid = panel.index[0] + (panel.index[-1] - panel.index[0]) / 2
     t = res.trades
@@ -63,12 +62,11 @@ def analyse(panel: pd.DataFrame, cfg: Config, start_idx: int):
         "market_gbp": float(att["market_gbp"].sum()) if not att.empty else 0.0,
         "selection_gbp": float(att["selection_gbp"].sum()) if not att.empty else 0.0,
         "rich_instead_net_gbp": float((att["other_gross_gbp"] - att["costs_gbp"]).sum()) if not att.empty else 0.0,
-        "coin_flip_p": p_coin,
         "random_timing_p": p_time,
         "h1_pnl_gbp": float(t.loc[t["entry_time"] < mid, "net_pnl_gbp"].sum()) if not t.empty else 0.0,
         "h2_pnl_gbp": float(t.loc[t["entry_time"] >= mid, "net_pnl_gbp"].sum()) if not t.empty else 0.0,
     }
-    return row, att, coin_sims, res
+    return row, att, res
 
 
 def results_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -97,7 +95,6 @@ def attribution_table(df: pd.DataFrame) -> pd.DataFrame:
         "Selection share of gross": (df["selection_gbp"] / (df["market_gbp"] + df["selection_gbp"])).map(
             lambda v: "-" if not np.isfinite(v) else f"{v:.0%}"),
         "If you'd bought the rich asset": df["rich_instead_net_gbp"].map(gbp),
-        "Coin-flip p": df["coin_flip_p"].map("{:.2f}".format),
         "Random-timing p": df["random_timing_p"].map("{:.2f}".format),
     })
 
@@ -117,13 +114,12 @@ def main() -> None:
     # Benchmarks start where the strategy could first trade: the open after warm-up.
     start_idx = panel.index.get_loc(compute_zscore(panel, base.lookback)["z"].first_valid_index()) + 1
 
-    rows, stop_rows, trades, coin = [], [], [], {}
+    rows, stop_rows, trades = [], [], []
     results = {}
     for e in THRESHOLDS:
-        row, att, sims, res = analyse(panel, replace(base, entry_z=e), start_idx)
+        row, att, res = analyse(panel, replace(base, entry_z=e), start_idx)
         rows.append(row)
         results[e] = res
-        coin[e] = (sims, float(att["gross_pnl_gbp"].sum()) if not att.empty else 0.0)
         if not att.empty:
             trades.append(att.assign(entry_threshold=e))
         stop_rows.append(analyse(panel, replace(base, entry_z=e, stop_z=e + 1.5), start_idx)[0])
@@ -148,7 +144,6 @@ def main() -> None:
         "Buy & hold ZEC": bh["Buy & hold ZEC"],
         "Buy & hold 50/50": bh["Buy & hold 50/50"],
     }, CHARTS / "lo_02_equity_vs_buy_hold.png")
-    report.plot_coin_flip({e: coin[e] for e in (1.0, 2.0)}, CHARTS / "lo_03_coin_flip.png")
 
     write_report(panel, base, start_idx, summary, stops, bench)
     print(attribution_table(summary).to_string(index=False))
@@ -189,10 +184,11 @@ Buying £1,000 of the cheap asset is the same position as:
    **selection part**, the only part that reflects the cheap/rich signal.
 
 So a long-only result only "qualifies" as relative value if the **selection part** is positive and
-better than chance. A big total P&L in a rising market proves nothing on its own. Three checks are used:
+better than chance. A big total P&L in a rising market proves nothing on its own.
 
-* **Coin-flip test:** keep every trade's timing but pick the asset at random, 20,000 times. The p-value is the share
-  of random picks that did at least as well as the signal. Below ~0.05 would suggest real skill.
+* **Is the selection part better than chance?** The selection part is exactly half the pairs trade's gross P&L, so
+  it is tested with the shuffled-history test in [the rotation report](../rotation/REPORT.md#is-any-of-it-better-than-chance),
+  which covers all three versions.
 * **Random-timing test:** keep every trade's length but start it at a random hour. This checks whether the market
   part came from good timing or just from being invested while prices rose.
 * **Buy & hold benchmarks:** £{base.leg_notional_gbp:,.0f} held in CYPH, ZEC or 50/50 from {day(panel.index[start_idx])}
@@ -220,8 +216,6 @@ Net P&L = market part + selection part − costs. "If you'd bought the rich asse
 {md_table(attribution_table(summary))}
 
 ![Attribution](charts/lo_01_attribution.png)
-
-![Coin-flip test](charts/lo_03_coin_flip.png)
 
 ### Same, with a z stop-loss at entry + 1.5
 
